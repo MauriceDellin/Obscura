@@ -96,7 +96,7 @@ py -3.13 anonymize_gui.py
 
 # Paketieren (Windows; Inno Setup optional für den Installer)
 .\build.bat
-#  -> dist\Obscura.exe         (portabel)
+#  -> dist\Obscura-Portable.exe         (portabel)
 #  -> Output\Obscura-Setup.exe (Installer)
 ```
 

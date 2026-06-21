@@ -1,17 +1,18 @@
 ; Inno-Setup-Skript fuer die Obscura
-; Erzeugt einen Windows-Installer aus der zuvor gebauten dist\Obscura.exe
+; Erzeugt einen Windows-Installer aus der zuvor gebauten dist\Obscura-Portable.exe
 ;
 ; Voraussetzungen:
-;   1) PyInstaller-Build ausgefuehrt  ->  dist\Obscura.exe existiert
+;   1) PyInstaller-Build ausgefuehrt  ->  dist\Obscura-Portable.exe existiert
 ;   2) Inno Setup installiert         ->  https://jrsoftware.org/isdl.php
 ; Bauen:  Rechtsklick auf diese Datei -> "Compile"  ODER
 ;         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
 ; Ergebnis:  Output\Obscura-Setup.exe
 
 #define MyAppName "Obscura"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "Maurice Dellin"
 #define MyAppExeName "Obscura.exe"
+#define MyAppBuildExe "Obscura-Portable.exe"
 
 [Setup]
 AppId={{B7E2B9B0-1C5E-4E2C-9C2A-0A1B2C3D4E5F}
@@ -39,7 +40,8 @@ Name: "de"; MessagesFile: "compiler:Languages\German.isl"
 Name: "desktopicon"; Description: "Desktop-Verknuepfung erstellen"; GroupDescription: "Zusaetzliche Symbole:"
 
 [Files]
-Source: "dist\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+; portable Build (Obscura-Portable.exe) wird als Obscura.exe installiert
+Source: "dist\{#MyAppBuildExe}"; DestDir: "{app}"; DestName: "{#MyAppExeName}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

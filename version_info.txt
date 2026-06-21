@@ -1,8 +1,8 @@
 # Windows-Versionsinfo fuer die .exe (von PyInstaller eingebettet)
 VSVersionInfo(
   ffi=FixedFileInfo(
-    filevers=(1, 0, 0, 0),
-    prodvers=(1, 0, 0, 0),
+    filevers=(1, 1, 0, 0),
+    prodvers=(1, 1, 0, 0),
     mask=0x3f,
     flags=0x0,
     OS=0x40004,
@@ -18,11 +18,11 @@ VSVersionInfo(
           [
             StringStruct('CompanyName', 'Maurice Dellin'),
             StringStruct('FileDescription', 'Obscura'),
-            StringStruct('FileVersion', '1.0.0'),
+            StringStruct('FileVersion', '1.1.0'),
             StringStruct('InternalName', 'Obscura'),
-            StringStruct('OriginalFilename', 'Obscura.exe'),
+            StringStruct('OriginalFilename', 'Obscura-Portable.exe'),
             StringStruct('ProductName', 'Obscura'),
-            StringStruct('ProductVersion', '1.0.0'),
+            StringStruct('ProductVersion', '1.1.0'),
           ])
       ]),
     VarFileInfo([VarStruct('Translation', [1031, 1200])])

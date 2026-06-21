@@ -123,7 +123,7 @@ Inno Setup vorhanden – den Installer):
 ```
 
 Ergebnisse:
-- `dist\Obscura.exe` – portable App (eine Datei, kein Python nötig)
+- `dist\Obscura-Portable.exe` – portable App (eine Datei, kein Python nötig)
 - `Output\Obscura-Setup.exe` – Installer (Startmenü, Desktop-
   Verknüpfung, Deinstaller), nur wenn **Inno Setup** installiert ist
   (<https://jrsoftware.org/isdl.php>)
