@@ -41,10 +41,14 @@ python anonymize_gui.py
    OCR eintragen
 4. **Vorschau** (rechts) zeigt das fertige Ergebnis des gewählten Bildes
 5. **Zusatzfelder mit der Maus aufziehen:** einfach im Vorschaubild ein Rechteck
-   ziehen – es wird (in Hintergrundfarbe angeglichen) sofort in der Vorschau
-   gefüllt und rot umrandet. **Rechtsklick** auf ein Feld löscht es; die Knöpfe
-   „Letztes Feld" / „Felder löschen" helfen ebenfalls.
+   ziehen – es wird sofort gefüllt und rot umrandet. **Rechtsklick** auf ein Feld
+   löscht es; die Knöpfe „Letztes Feld" / „Felder löschen" helfen ebenfalls.
    Gezeichnete Felder gelten **nur für das jeweilige Bild** (pro Datei gemerkt).
+   - **Feldfarbe:** Standard ist `auto` (Hintergrund wird gemittelt). Für einen
+     exakten Treffer auf farbigen Panels die **Pipette** nutzen: anklicken, dann
+     in die Vorschau auf die gewünschte Hintergrundfarbe klicken – die Farbe wird
+     pixelgenau übernommen. Alternativ über **„Farbe…"** einen Farbwähler öffnen.
+     Die gewählte Farbe gilt für die danach gezogenen Felder.
 6. **Zoom für präzises Zeichnen:** mit **Strg+Mausrad** (oder den Knöpfen
    `+` / `−` / `Fit`) in die Vorschau hineinzoomen; bei Vergrößerung mit den
    Scrollleisten bzw. Mausrad (horizontal: Umschalt+Mausrad) verschieben. So

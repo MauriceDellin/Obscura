@@ -19,7 +19,7 @@ import sys
 import queue
 import threading
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, colorchooser
 
 from PIL import Image, ImageTk
 
@@ -54,6 +54,8 @@ class App(tk.Tk):
         self.preview_disp = (0, 0)     # Groesse des angezeigten (skalierten) Bildes
         self._drag = None              # (startx, starty, canvas-rect-id)
         self.zoom = 1.0                # 1.0 = einpassen (Fit); >1 = hineingezoomt
+        self.draw_fill = "auto"        # Fuellfarbe NEUER gezeichneter Felder
+        self._picking = False          # Pipette aktiv?
 
         # Galerie-Zustand
         self.image_paths = []          # alle (aufgeloesten) Bildpfade
@@ -117,11 +119,25 @@ class App(tk.Tk):
                     command=self._on_options).pack(side="right")
 
         row = ttk.Frame(opt); row.pack(fill="x", pady=(6, 0))
-        ttk.Label(row, text="Füllfarbe:").pack(side="left")
+        ttk.Label(row, text="Header-Füllung:").pack(side="left")
         fill_cb = ttk.Combobox(row, width=10, state="readonly",
                                textvariable=self.fill_var, values=["black", "auto"])
         fill_cb.pack(side="right")
         fill_cb.bind("<<ComboboxSelected>>", lambda e: self._on_options())
+
+        # Füllfarbe für per Maus gezogene Felder (auto / Pipette / Farbwähler)
+        row = ttk.Frame(opt); row.pack(fill="x", pady=(6, 0))
+        ttk.Label(row, text="Feldfarbe (Maus):").pack(side="left")
+        self.fill_swatch = tk.Label(row, width=6, text="auto", relief="solid",
+                                    borderwidth=1)
+        self.fill_swatch.pack(side="right")
+        row = ttk.Frame(opt); row.pack(fill="x", pady=(2, 0))
+        ttk.Button(row, text="auto", width=6,
+                   command=lambda: self._set_draw_fill("auto")).pack(side="left")
+        ttk.Button(row, text="Pipette", width=8,
+                   command=self._start_pick).pack(side="left", padx=(4, 0))
+        ttk.Button(row, text="Farbe…", width=8,
+                   command=self._choose_color).pack(side="left", padx=(4, 0))
 
         self.ocr_chk = ttk.Checkbutton(opt, text="OCR-Namenssuche nutzen",
                                        variable=self.use_ocr_var,
@@ -297,6 +313,55 @@ class App(tk.Tk):
     def _on_canvas_wheel_h(self, e):
         self.canvas.xview_scroll(int(-e.delta / 120), "units")
 
+    # ------------------------------------------------- Feldfarbe / Pipette ---
+    @staticmethod
+    def _rgb_hex(c):
+        return "#%02x%02x%02x" % (int(c[0]), int(c[1]), int(c[2]))
+
+    def _set_draw_fill(self, val):
+        """Setzt die Füllfarbe für NEU gezogene Felder ('auto' oder (r,g,b))."""
+        self.draw_fill = val
+        if isinstance(val, (tuple, list)):
+            self.fill_swatch.config(text=self._rgb_hex(val),
+                                    background=self._rgb_hex(val), foreground="#fff")
+        else:
+            self.fill_swatch.config(text="auto", background="SystemButtonFace",
+                                    foreground="#000")
+
+    def _choose_color(self):
+        init = self.draw_fill if isinstance(self.draw_fill, (tuple, list)) else (0, 17, 40)
+        res = colorchooser.askcolor(color=self._rgb_hex(init),
+                                    title="Feldfarbe wählen")
+        if res and res[0]:
+            self._set_draw_fill(tuple(int(c) for c in res[0]))
+            self._log(f"Feldfarbe gesetzt: RGB {self.draw_fill}")
+
+    def _start_pick(self):
+        if not self.selected_path:
+            return
+        self._picking = True
+        self.canvas.config(cursor="dotbox")
+        self._log("Pipette aktiv: in die Vorschau klicken, um eine Farbe zu übernehmen.")
+
+    def _pick_color_at(self, e):
+        self._picking = False
+        self.canvas.config(cursor="crosshair")
+        if not self.selected_path:
+            return
+        s = self.preview_scale or 1.0
+        cx, cy = self._cxy(e)
+        ox, oy = int(cx / s), int(cy / s)
+        try:
+            img = Image.open(self.selected_path).convert("RGB")
+            ox = max(0, min(ox, img.width - 1))
+            oy = max(0, min(oy, img.height - 1))
+            col = img.getpixel((ox, oy))
+        except Exception as ex:  # noqa: BLE001
+            self._log(f"Pipette-Fehler: {ex}")
+            return
+        self._set_draw_fill(tuple(col))
+        self._log(f"Farbe übernommen: RGB {tuple(col)} bei ({ox},{oy})")
+
     def _render_thumb(self, path):
         """Rendert ein (anonymisiertes) Galerie-Vorschaubild – ohne OCR (schnell)."""
         if path not in self.thumb_labels:
@@ -440,7 +505,8 @@ class App(tk.Tk):
         self.canvas.configure(scrollregion=(0, 0, dw, dh))
         # gezeichnete Felder zusaetzlich rot umranden (zum Erkennen/Loeschen)
         s = self.preview_scale
-        for (x0, y0, x1, y1) in self.drawn.get(base, []):
+        for box in self.drawn.get(base, []):
+            x0, y0, x1, y1 = box[:4]
             self.canvas.create_rectangle(x0 * s, y0 * s, x1 * s, y1 * s,
                                          outline="#ff3030", width=2)
         # Galerie-Thumbnail des aktuellen Bildes mitziehen
@@ -454,6 +520,9 @@ class App(tk.Tk):
         return self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
 
     def _on_press(self, e):
+        if self._picking:                  # Pipette: Farbe aus Bild aufnehmen
+            self._pick_color_at(e)
+            return
         x, y = self._cxy(e)
         rid = self.canvas.create_rectangle(x, y, x, y,
                                            outline="#ff3030", width=2, dash=(3, 2))
@@ -482,7 +551,7 @@ class App(tk.Tk):
         if xb - xa < 4 or yb - ya < 4:
             return  # zu kleiner Klick -> ignorieren
         s = self.preview_scale or 1.0
-        box = (int(xa / s), int(ya / s), int(xb / s), int(yb / s))
+        box = (int(xa / s), int(ya / s), int(xb / s), int(yb / s), self.draw_fill)
         self.drawn.setdefault(self.preview_base, []).append(box)
         self._log(f"Feld hinzugefügt ({self.preview_base}): {box}")
         self._update_preview()
@@ -495,7 +564,8 @@ class App(tk.Tk):
         s = self.preview_scale or 1.0
         cx, cy = self._cxy(e)
         ox, oy = cx / s, cy / s
-        for i, (x0, y0, x1, y1) in enumerate(boxes):
+        for i, box in enumerate(boxes):
+            x0, y0, x1, y1 = box[:4]
             if x0 <= ox <= x1 and y0 <= oy <= y1:
                 removed = boxes.pop(i)
                 self._log(f"Feld entfernt ({base}): {removed}")
@@ -561,5 +631,19 @@ class App(tk.Tk):
         self.after(150, self._drain_queue)
 
 
+def _enable_dpi_awareness():
+    """Macht den Prozess unter Windows DPI-aware -> scharfer Text bei
+    Skalierung >100 %. Muss VOR dem Erzeugen des Fensters laufen."""
+    try:
+        import ctypes
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)  # System-DPI-aware
+        except Exception:  # noqa: BLE001
+            ctypes.windll.user32.SetProcessDPIAware()        # aelterer Fallback
+    except Exception:  # noqa: BLE001 (nicht-Windows o. nicht verfuegbar)
+        pass
+
+
 if __name__ == "__main__":
+    _enable_dpi_awareness()
     App().mainloop()
