@@ -1,4 +1,4 @@
-# Röntgenbild-Anonymisierung
+# Obscura — Röntgenbild-Anonymisierung
 
 Kleines Tool zum **Schwärzen von Patientendaten** (Name + Geburtsdatum) in
 radiologischen Bild-Exporten (PNG/JPG/TIF). Auflösung, Größe und Format bleiben
@@ -123,8 +123,8 @@ Inno Setup vorhanden – den Installer):
 ```
 
 Ergebnisse:
-- `dist\Roentgen-Anonymisierung.exe` – portable App (eine Datei, kein Python nötig)
-- `Output\Roentgen-Anonymisierung-Setup.exe` – Installer (Startmenü, Desktop-
+- `dist\Obscura.exe` – portable App (eine Datei, kein Python nötig)
+- `Output\Obscura-Setup.exe` – Installer (Startmenü, Desktop-
   Verknüpfung, Deinstaller), nur wenn **Inno Setup** installiert ist
   (<https://jrsoftware.org/isdl.php>)
 

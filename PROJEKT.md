@@ -1,9 +1,9 @@
-# Projektdokumentation – Röntgenbild-Anonymisierung
+# Projektdokumentation – Obscura
 
 Entwickler-/Übergabedokument zum Weiterarbeiten. Die **Bedien-Anleitung** steht
 in `README.md`; dieses Dokument beschreibt **Stand, Aufbau und Ideen**.
 
-- **Repo:** `MauriceDellin/roentgen-anonymisierung` (privat), Branch `main`
+- **Repo:** `MauriceDellin/Obscura` (privat), Branch `main`
 - **Zweck:** Patientendaten (Name + Geburtsdatum) in radiologischen Bild-Exporten
   (PNG/JPG/TIF) durch schwarze/farbige Felder überschreiben – per Auto-Erkennung,
   manuellen Feldern und optionaler OCR. Auflösung/Größe/Format bleiben erhalten.
@@ -96,8 +96,8 @@ py -3.13 anonymize_gui.py
 
 # Paketieren (Windows; Inno Setup optional für den Installer)
 .\build.bat
-#  -> dist\Roentgen-Anonymisierung.exe         (portabel)
-#  -> Output\Roentgen-Anonymisierung-Setup.exe (Installer)
+#  -> dist\Obscura.exe         (portabel)
+#  -> Output\Obscura-Setup.exe (Installer)
 ```
 
 OCR braucht zusätzlich **Tesseract-OCR** (UB-Mannheim-Build) auf dem Zielrechner.

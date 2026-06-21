@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
-# PyInstaller-Spec fuer die Roentgenbild-Anonymisierung.
+# PyInstaller-Spec fuer die Obscura.
 # Build:  py -3.13 -m PyInstaller --noconfirm anonymize.spec
-# Ergebnis: dist\Roentgen-Anonymisierung.exe  (eine portable Datei)
+# Ergebnis: dist\Obscura.exe  (eine portable Datei)
 #
 # Hinweis OCR: pytesseract (Python) wird mitgebündelt, falls installiert.
 # Das eigentliche Tesseract-Programm wird NICHT eingebettet – der Code findet
@@ -32,7 +32,7 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Roentgen-Anonymisierung',
+    name='Obscura',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

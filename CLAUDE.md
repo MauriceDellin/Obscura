@@ -1,8 +1,8 @@
 # CLAUDE.md – Hinweise für Claude-Sessions in diesem Repo
 
-Tool zum Anonymisieren radiologischer Bild-Exporte (Name + Geburtsdatum
-schwärzen). Dies ist der aktive Arbeitsordner (vom früheren Sciebo-Ordner
-hierher umgezogen).
+**Obscura** – Tool zum Anonymisieren radiologischer Bild-Exporte (Name +
+Geburtsdatum schwärzen). Dies ist der aktive Arbeitsordner (vom früheren
+Sciebo-Ordner hierher umgezogen).
 
 ## ⚠️ Wichtigste Regel: keine Patientendaten ins Git
 Die Beispielbilder unter `Beispielbilder/` enthalten **echte Patientendaten**
@@ -28,7 +28,7 @@ Bilddateien (`*.png` etc.) gestaged sind.
 - Paketieren: `.\build.bat`  → `dist\…exe` (portabel) + `Output\…Setup.exe`
 
 ## Git / Release
-- Remote: `MauriceDellin/roentgen-anonymisierung` (privat), Branch `main`.
+- Remote: `MauriceDellin/Obscura` (privat), Branch `main`.
 - Commits: Nutzer pusht auf Wunsch; Commit-Messages mit Co-Authored-By-Trailer.
 - Releases: EXE/Installer per `gh release create vX.Y.Z … dist\…exe Output\…exe`
   (Binaries vorher mit `build.bat` neu bauen). Aktuell: `v1.0.0`.

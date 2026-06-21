@@ -1,4 +1,4 @@
-# Abhängigkeiten der Röntgenbild-Anonymisierung
+# Abhängigkeiten von Obscura (Röntgenbild-Anonymisierung)
 # Installation:  py -3.13 -m pip install -r requirements.txt
 #
 # Hinweis: tkinter ist KEINE pip-Abhängigkeit, sondern Teil von Python

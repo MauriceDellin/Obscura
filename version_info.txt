@@ -17,11 +17,11 @@ VSVersionInfo(
           '040704b0',
           [
             StringStruct('CompanyName', 'Maurice Dellin'),
-            StringStruct('FileDescription', 'Roentgenbild-Anonymisierung'),
+            StringStruct('FileDescription', 'Obscura'),
             StringStruct('FileVersion', '1.0.0'),
-            StringStruct('InternalName', 'Roentgen-Anonymisierung'),
-            StringStruct('OriginalFilename', 'Roentgen-Anonymisierung.exe'),
-            StringStruct('ProductName', 'Roentgenbild-Anonymisierung'),
+            StringStruct('InternalName', 'Obscura'),
+            StringStruct('OriginalFilename', 'Obscura.exe'),
+            StringStruct('ProductName', 'Obscura'),
             StringStruct('ProductVersion', '1.0.0'),
           ])
       ]),

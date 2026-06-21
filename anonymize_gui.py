@@ -36,7 +36,7 @@ FIELD_COLOR = "#ff3030"    # Farbe der uebrigen Felder
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("Röntgenbild-Anonymisierung")
+        self.title("Obscura – Röntgenbild-Anonymisierung")
         self.minsize(1180, 700)
         self._set_window_icon()
 
@@ -859,7 +859,7 @@ def _set_app_user_model_id():
     try:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "Dellin.RoentgenAnonymisierung")
+            "Dellin.Obscura")
     except Exception:  # noqa: BLE001
         pass
 
