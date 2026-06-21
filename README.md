@@ -97,7 +97,44 @@ Farbe an – praktisch für farbige Panels (z. B. das dunkelblaue Panel in Abb. 
   zusätzlich die DICOM-Metadaten entfernt werden. Für reine PNG/JPG-Exporte
   (wie hier) reicht die Pixel-Schwärzung.
 
+## Als Windows-App verpacken (Installer + Icon)
+
+Damit Kolleg:innen die App **ohne Python** nutzen können, lässt sie sich zu
+einer `.exe` und einem Installer bündeln. Der Build läuft auf **Windows**.
+
+**In einem Schritt** (installiert Build-Tools, erzeugt Icon, EXE und – falls
+Inno Setup vorhanden – den Installer):
+
+```powershell
+.\build.bat
+```
+
+Ergebnisse:
+- `dist\Roentgen-Anonymisierung.exe` – portable App (eine Datei, kein Python nötig)
+- `Output\Roentgen-Anonymisierung-Setup.exe` – Installer (Startmenü, Desktop-
+  Verknüpfung, Deinstaller), nur wenn **Inno Setup** installiert ist
+  (<https://jrsoftware.org/isdl.php>)
+
+Einzelschritte (falls gewünscht):
+```powershell
+py -3.13 -m pip install pyinstaller pillow pytesseract
+py -3.13 make_icon.py                       # erzeugt app.ico + logo.png
+py -3.13 -m PyInstaller --noconfirm anonymize.spec
+```
+
+Hinweise:
+- **OCR in der App:** `pytesseract` wird mitgebündelt; das Tesseract-Programm
+  selbst nicht (zu groß). Auf dem Zielrechner muss Tesseract installiert sein
+  (Standardpfad `C:\Program Files\Tesseract-OCR`) – die App findet es dort.
+- Das **Icon** wird per `make_icon.py` aus Code erzeugt (reproduzierbar); zum
+  Anpassen einfach die Farben/Formen dort ändern und neu bauen.
+
 ## Dateien
 
 - `anonymize_core.py` – Kernlogik + Kommandozeile (nur Pillow nötig)
 - `anonymize_gui.py`  – grafische Oberfläche (tkinter)
+- `make_icon.py`      – erzeugt das App-Icon (`app.ico`)
+- `anonymize.spec`    – PyInstaller-Konfiguration (→ `.exe`)
+- `version_info.txt`  – Versions-Metadaten der `.exe`
+- `installer.iss`     – Inno-Setup-Skript (→ Installer)
+- `build.bat`         – baut Icon, EXE und Installer in einem Rutsch

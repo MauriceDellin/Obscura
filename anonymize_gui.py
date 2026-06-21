@@ -15,6 +15,7 @@ Linux/WSL ggf.  sudo apt install python3-tk) und Pillow.
 """
 
 import os
+import sys
 import queue
 import threading
 import tkinter as tk
@@ -34,6 +35,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("Röntgenbild-Anonymisierung")
         self.minsize(1180, 700)
+        self._set_window_icon()
 
         self.inputs = []                       # gewaehlte Dateien/Ordner
         self.out_var = tk.StringVar()
@@ -199,6 +201,18 @@ class App(tk.Tk):
         self.log.pack(fill="x", pady=(8, 0))
 
     # ------------------------------------------------------------ Helpers ---
+    def _set_window_icon(self):
+        """Setzt das Fenster-/Taskleisten-Symbol (app.ico), wenn vorhanden.
+        Funktioniert aus dem Quellcode wie auch im PyInstaller-Bundle."""
+        base = getattr(sys, "_MEIPASS",
+                       os.path.dirname(os.path.abspath(__file__)))
+        ico = os.path.join(base, "app.ico")
+        try:
+            if os.path.exists(ico):
+                self.iconbitmap(ico)
+        except Exception:  # noqa: BLE001
+            pass
+
     def _check_ocr(self):
         if ac.ocr_available():
             self.ocr_hint.config(text="Tesseract gefunden – OCR verfügbar.",
