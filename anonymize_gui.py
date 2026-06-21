@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-anonymize_gui.py — kleine grafische Oberflaeche zum Schwaerzen von
-Patientendaten in radiologischen Bild-Exporten.
+anonymize_gui.py — grafische Oberflaeche zum Schwaerzen von Patientendaten
+in radiologischen Bild-Exporten.
 
-Nutzt die Logik aus anonymize_core.py:
-  * AUTO    – Header oben links (Name + Geburtsdatum) automatisch.
-  * MANUELL – optionale Zusatzfelder (z. B. eingebettetes Panel in Abb. 3).
-  * OCR     – optionale Namenssuche im ganzen Bild (falls Tesseract installiert).
+Die Vorschau ist ein kleiner Rechteck-Editor: jedes Feld (auch das automatisch
+erkannte Header-Feld oben links) ist ein Objekt, das sich auswaehlen,
+verschieben, in der Groesse aendern, umfaerben und loeschen laesst.
+
+Nutzt die Logik aus anonymize_core.py (AUTO-Header, manuelle Felder, OCR).
 
 Start:  python anonymize_gui.py
-Benoetigt: Python mit tkinter (Standard bei Windows-/Mac-Python; unter
-Linux/WSL ggf.  sudo apt install python3-tk) und Pillow.
+Benoetigt: Python mit tkinter und Pillow.
 """
 
 import os
@@ -25,9 +25,12 @@ from PIL import Image, ImageTk
 
 import anonymize_core as ac
 
-PREVIEW_MAX = (760, 620)   # groesser = feineres Ziehen von Hand
+PREVIEW_MAX = (760, 620)   # Fallback-Vorschaugroesse vor Fenster-Realisierung
 THUMB_MAX = (170, 140)     # Groesse der Galerie-Vorschaubilder
 GALLERY_COLS = 2           # Spalten in der Galerie
+HANDLE = 3                 # halbe Kantenlaenge der Resize-Griffe (Bildschirm-Px)
+SEL_COLOR = "#ffd400"      # Farbe des ausgewaehlten Feldes
+FIELD_COLOR = "#ff3030"    # Farbe der uebrigen Felder
 
 
 class App(tk.Tk):
@@ -37,32 +40,36 @@ class App(tk.Tk):
         self.minsize(1180, 700)
         self._set_window_icon()
 
-        self.inputs = []                       # gewaehlte Dateien/Ordner
+        self.inputs = []
         self.out_var = tk.StringVar()
         self.lines_var = tk.IntVar(value=2)
         self.ocr_name_var = tk.StringVar()
         self.use_ocr_var = tk.BooleanVar(value=False)
-        self.extra_var = tk.StringVar()        # "x0,y0,x1,y1[:R,G,B]"
-        self.fill_var = tk.StringVar(value="black")
+        self.fill_var = tk.StringVar(value="black")   # Header-Fuellung
         self._msg_q = queue.Queue()
         self._preview_imgtk = None
 
-        # Per Maus gezogene Zusatzfelder, je Bild (Originalkoordinaten):
-        self.drawn = {}                # {Dateiname: [(x0, y0, x1, y1), ...]}
-        self.preview_base = None       # Dateiname des aktuell gezeigten Bildes
-        self.preview_scale = 1.0       # Anzeige / Original
-        self.preview_disp = (0, 0)     # Groesse des angezeigten (skalierten) Bildes
-        self._drag = None              # (startx, starty, canvas-rect-id)
-        self.zoom = 1.0                # 1.0 = einpassen (Fit); >1 = hineingezoomt
-        self.draw_fill = "auto"        # Fuellfarbe NEUER gezeichneter Felder
+        # Felder je Bild: dicts {x0,y0,x1,y1,fill,kind}; kind in {header,manual}
+        self.fields = {}
+        self.preview_base = None
+        self.preview_scale = 1.0
+        self._orig_size = (0, 0)
+        self.zoom = 1.0
+        self.draw_fill = "auto"        # Standard-Fuellfarbe NEUER Felder
+        self.sel_index = None          # ausgewaehltes Feld im aktuellen Bild
+        self._action = None            # ('new'|'move'|'resize', ...)
+        self._press = (0, 0)           # Startpunkt (Originalkoord.) eines Drags
+        self._orig_box = None          # Feldkoordinaten beim Drag-Start
+        self._rubber = None            # Canvas-Item beim Aufziehen
         self._picking = False          # Pipette aktiv?
 
-        # Galerie-Zustand
-        self.image_paths = []          # alle (aufgeloesten) Bildpfade
-        self.selected_path = None      # aktuell gewaehltes Bild (gross)
-        self.thumb_cells = {}          # pfad -> Rahmen-Widget
-        self.thumb_labels = {}         # pfad -> Bild-Label
-        self._thumb_refs = {}          # pfad -> PhotoImage (Referenz halten)
+        # Galerie
+        self.image_paths = []
+        self.selected_path = None
+        self.thumb_cells = {}
+        self.thumb_labels = {}
+        self._thumb_refs = {}
+        self._last_canvas_size = (0, 0)
 
         self._build_ui()
         self._check_ocr()
@@ -72,10 +79,8 @@ class App(tk.Tk):
     def _build_ui(self):
         root = ttk.Frame(self, padding=10)
         root.pack(fill="both", expand=True)
-        left = ttk.Frame(root)
-        left.pack(side="left", fill="y")
-        mid = ttk.Frame(root)
-        mid.pack(side="left", fill="y", padx=(12, 0))
+        left = ttk.Frame(root); left.pack(side="left", fill="y")
+        mid = ttk.Frame(root); mid.pack(side="left", fill="y", padx=(12, 0))
         right = ttk.Frame(root)
         right.pack(side="left", fill="both", expand=True, padx=(12, 0))
 
@@ -89,7 +94,7 @@ class App(tk.Tk):
         ttk.Button(box, text="Liste leeren",
                    command=self._clear_inputs).pack(fill="x", pady=(4, 0))
 
-        # --- Galerie (alle Bilder als Vorschau) ---
+        # --- Galerie ---
         gal = ttk.LabelFrame(mid, text="Galerie – Bild anklicken", padding=6)
         gal.pack(fill="both", expand=True)
         gcanvas = tk.Canvas(gal, width=GALLERY_COLS * (THUMB_MAX[0] + 14),
@@ -108,7 +113,7 @@ class App(tk.Tk):
             "<Configure>",
             lambda e: gcanvas.itemconfig(self._gal_window, width=e.width))
         self.gallery_canvas = gcanvas
-        gcanvas.bind("<MouseWheel>", self._on_gallery_wheel)        # Mausrad
+        gcanvas.bind("<MouseWheel>", self._on_gallery_wheel)
 
         # --- Optionen ---
         opt = ttk.LabelFrame(left, text="2) Optionen", padding=8)
@@ -124,20 +129,25 @@ class App(tk.Tk):
                                textvariable=self.fill_var, values=["black", "auto"])
         fill_cb.pack(side="right")
         fill_cb.bind("<<ComboboxSelected>>", lambda e: self._on_options())
+        ttk.Button(opt, text="Auto-Felder neu erkennen",
+                   command=self._on_options).pack(fill="x", pady=(6, 0))
 
-        # Füllfarbe für per Maus gezogene Felder (auto / Pipette / Farbwähler)
-        row = ttk.Frame(opt); row.pack(fill="x", pady=(6, 0))
-        ttk.Label(row, text="Feldfarbe (Maus):").pack(side="left")
-        self.fill_swatch = tk.Label(row, width=6, text="auto", relief="solid",
+        # Feldfarbe (auf ausgewaehltes Feld oder Standard fuer neue Felder)
+        row = ttk.Frame(opt); row.pack(fill="x", pady=(8, 0))
+        ttk.Label(row, text="Feldfarbe:").pack(side="left")
+        self.fill_swatch = tk.Label(row, width=7, text="auto", relief="solid",
                                     borderwidth=1)
         self.fill_swatch.pack(side="right")
         row = ttk.Frame(opt); row.pack(fill="x", pady=(2, 0))
         ttk.Button(row, text="auto", width=6,
-                   command=lambda: self._set_draw_fill("auto")).pack(side="left")
+                   command=lambda: self._apply_fill("auto")).pack(side="left")
         ttk.Button(row, text="Pipette", width=8,
                    command=self._start_pick).pack(side="left", padx=(4, 0))
         ttk.Button(row, text="Farbe…", width=8,
                    command=self._choose_color).pack(side="left", padx=(4, 0))
+        ttk.Label(opt, text="(Feld auswählen → Farbe gilt für dieses Feld; "
+                            "sonst für neue Felder)", foreground="#666",
+                  wraplength=260).pack(anchor="w", pady=(2, 0))
 
         self.ocr_chk = ttk.Checkbutton(opt, text="OCR-Namenssuche nutzen",
                                        variable=self.use_ocr_var,
@@ -150,15 +160,6 @@ class App(tk.Tk):
         self.ocr_hint = ttk.Label(opt, text="", foreground="#a00")
         self.ocr_hint.pack(anchor="w")
 
-        row = ttk.Frame(opt); row.pack(fill="x", pady=(8, 0))
-        ttk.Label(row, text="Zusatzfeld x0,y0,x1,y1[:R,G,B]:").pack(anchor="w")
-        ttk.Entry(opt, textvariable=self.extra_var).pack(fill="x")
-        ttk.Label(opt, text="(leer lassen, wenn nicht benötigt – gilt für alle "
-                            "gewählten Bilder)", foreground="#666",
-                  wraplength=260).pack(anchor="w")
-        ttk.Button(opt, text="Vorschau aktualisieren",
-                   command=self._on_options).pack(fill="x", pady=(8, 0))
-
         # --- Ausgabe + Start ---
         out = ttk.LabelFrame(left, text="3) Ausgabe", padding=8)
         out.pack(fill="x", pady=(10, 0))
@@ -169,18 +170,17 @@ class App(tk.Tk):
                                   command=self._run)
         self.run_btn.pack(fill="x", pady=(8, 0))
 
-        # --- Vorschau (interaktiv, zoombar) + Log ---
+        # --- Vorschau (Editor) + Log ---
         pv = ttk.LabelFrame(
-            right, text="Vorschau – ziehen = Feld · Rechtsklick = löschen · "
-                        "Strg+Mausrad = Zoom", padding=8)
+            right, text="Vorschau – ziehen = neues Feld · klicken = auswählen · "
+                        "Griffe ziehen = Größe · Entf = löschen · Strg+Rad = Zoom",
+            padding=8)
         pv.pack(fill="both", expand=True)
-        bar = ttk.Frame(pv)
-        bar.pack(fill="x")
-        ttk.Button(bar, text="Felder löschen",
-                   command=self._clear_drawn).pack(side="right")
-        ttk.Button(bar, text="Letztes Feld",
-                   command=self._undo_drawn).pack(side="right", padx=(0, 4))
-        # Zoom-Steuerung
+        bar = ttk.Frame(pv); bar.pack(fill="x")
+        ttk.Button(bar, text="Alle Felder",
+                   command=self._clear_fields).pack(side="right")
+        ttk.Button(bar, text="Auswahl löschen",
+                   command=self._delete_selected).pack(side="right", padx=(0, 4))
         ttk.Button(bar, text="Fit", width=4,
                    command=self._zoom_reset).pack(side="left")
         ttk.Button(bar, text="−", width=3,
@@ -190,8 +190,7 @@ class App(tk.Tk):
         ttk.Button(bar, text="+", width=3,
                    command=self._zoom_in).pack(side="left")
 
-        cwrap = ttk.Frame(pv)
-        cwrap.pack(fill="both", expand=True, pady=(6, 0))
+        cwrap = ttk.Frame(pv); cwrap.pack(fill="both", expand=True, pady=(6, 0))
         self.canvas = tk.Canvas(cwrap, background="#222", highlightthickness=0,
                                 cursor="crosshair")
         hsb = ttk.Scrollbar(cwrap, orient="horizontal", command=self.canvas.xview)
@@ -206,20 +205,19 @@ class App(tk.Tk):
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
+        self.canvas.bind("<Motion>", self._on_hover)
         self.canvas.bind("<Button-3>", self._on_rightclick)
+        self.canvas.bind("<Delete>", lambda e: self._delete_selected())
         self.canvas.bind("<Configure>", self._on_canvas_resize)
-        self.canvas.bind("<MouseWheel>", self._on_canvas_wheel)          # scrollen
-        self.canvas.bind("<Shift-MouseWheel>", self._on_canvas_wheel_h)  # horizontal
-        self.canvas.bind("<Control-MouseWheel>", self._on_ctrl_wheel)    # zoomen
-        self._last_canvas_size = (0, 0)
+        self.canvas.bind("<MouseWheel>", self._on_canvas_wheel)
+        self.canvas.bind("<Shift-MouseWheel>", self._on_canvas_wheel_h)
+        self.canvas.bind("<Control-MouseWheel>", self._on_ctrl_wheel)
 
         self.log = tk.Text(right, height=8, width=50, state="disabled")
         self.log.pack(fill="x", pady=(8, 0))
 
     # ------------------------------------------------------------ Helpers ---
     def _set_window_icon(self):
-        """Setzt das Fenster-/Taskleisten-Symbol (app.ico), wenn vorhanden.
-        Funktioniert aus dem Quellcode wie auch im PyInstaller-Bundle."""
         base = getattr(sys, "_MEIPASS",
                        os.path.dirname(os.path.abspath(__file__)))
         ico = os.path.join(base, "app.ico")
@@ -238,7 +236,7 @@ class App(tk.Tk):
             self.ocr_chk.state(["disabled"])
             self.ocr_hint.config(
                 text="Tesseract nicht gefunden – OCR deaktiviert.\n"
-                     "(Auto + Zusatzfelder funktionieren weiter.)")
+                     "(Auto + manuelle Felder funktionieren weiter.)")
 
     def _log(self, text):
         self.log.config(state="normal")
@@ -246,9 +244,48 @@ class App(tk.Tk):
         self.log.see("end")
         self.log.config(state="disabled")
 
+    # -------------------------------------------------------- Feld-Modell ---
+    def _seed_header(self, img):
+        """Erkennt das Header-Feld und liefert ein Feld-dict (oder None)."""
+        lines = self.lines_var.get()
+        if lines <= 0:
+            return None
+        box = ac.header_box(img, lines=lines)
+        if not box:
+            return None
+        return {"x0": box[0], "y0": box[1], "x1": box[2], "y1": box[3],
+                "fill": self.fill_var.get(), "kind": "header"}
+
+    def _ensure_seeded(self, base, img):
+        """Legt beim ersten Sehen eines Bildes das Auto-Header-Feld an."""
+        if base in self.fields:
+            return
+        hdr = self._seed_header(img)
+        self.fields[base] = [hdr] if hdr else []
+
+    def _reseed_headers(self):
+        """Erkennt die Header-Felder aller Bilder neu (Zeilenzahl/Füllung)."""
+        for p in self.image_paths:
+            base = os.path.basename(p)
+            try:
+                img = Image.open(p)
+            except Exception:  # noqa: BLE001
+                continue
+            rest = [f for f in self.fields.get(base, []) if f["kind"] != "header"]
+            hdr = self._seed_header(img)
+            self.fields[base] = ([hdr] if hdr else []) + rest
+        self.sel_index = None
+
+    def _cur_fields(self):
+        return self.fields.setdefault(self.preview_base, []) \
+            if self.preview_base else []
+
+    def _fields_as_extra(self, base):
+        return [(f["x0"], f["y0"], f["x1"], f["y1"], f["fill"])
+                for f in self.fields.get(base, [])]
+
     # ----------------------------------------------------------- Galerie ---
     def _refresh_gallery(self):
-        """Baut die Thumbnail-Galerie aus allen gewaehlten Bildern neu auf."""
         for w in self.gallery_inner.winfo_children():
             w.destroy()
         self.thumb_cells.clear()
@@ -277,11 +314,48 @@ class App(tk.Tk):
         self.thumb_labels[path] = img_lbl
         self._render_thumb(path)
 
+    def _render_thumb(self, path):
+        if path not in self.thumb_labels:
+            return
+        base = os.path.basename(path)
+        try:
+            img = Image.open(path)
+            self._ensure_seeded(base, img)
+            anon, _ = ac.anonymize_image(img, lines=0,
+                                         extra=self._fields_as_extra(base))
+        except Exception as e:  # noqa: BLE001
+            self._log(f"Thumbnail-Fehler {base}: {e}")
+            return
+        anon.thumbnail(THUMB_MAX)
+        ph = ImageTk.PhotoImage(anon)
+        self._thumb_refs[path] = ph
+        self.thumb_labels[path].config(image=ph)
+
+    def _select_path(self, path):
+        self.selected_path = path
+        self.sel_index = None
+        self._highlight_selected()
+        self._update_preview()
+        self._sync_swatch(self.draw_fill)
+
+    def _rerender_all_thumbs(self):
+        for p in list(self.image_paths):
+            self._render_thumb(p)
+
+    def _on_options(self):
+        self._reseed_headers()
+        self._rerender_all_thumbs()
+        self._update_preview()
+
+    def _highlight_selected(self):
+        for p, cell in self.thumb_cells.items():
+            cell.configure(highlightbackground=(
+                "#1a73e8" if p == self.selected_path else "#2b2b2b"))
+
     def _on_gallery_wheel(self, e):
         self.gallery_canvas.yview_scroll(int(-e.delta / 120), "units")
 
     def _on_canvas_resize(self, e):
-        # Vorschau neu einpassen, wenn sich die Canvas-Groesse spuerbar aendert
         lw, lh = self._last_canvas_size
         if abs(e.width - lw) > 4 or abs(e.height - lh) > 4:
             if self.selected_path:
@@ -318,9 +392,7 @@ class App(tk.Tk):
     def _rgb_hex(c):
         return "#%02x%02x%02x" % (int(c[0]), int(c[1]), int(c[2]))
 
-    def _set_draw_fill(self, val):
-        """Setzt die Füllfarbe für NEU gezogene Felder ('auto' oder (r,g,b))."""
-        self.draw_fill = val
+    def _sync_swatch(self, val):
         if isinstance(val, (tuple, list)):
             self.fill_swatch.config(text=self._rgb_hex(val),
                                     background=self._rgb_hex(val), foreground="#fff")
@@ -328,77 +400,306 @@ class App(tk.Tk):
             self.fill_swatch.config(text="auto", background="SystemButtonFace",
                                     foreground="#000")
 
+    def _apply_fill(self, val):
+        """Setzt die Farbe: auf das ausgewaehlte Feld, sonst Standard fuer neue."""
+        fields = self._cur_fields()
+        if self.sel_index is not None and 0 <= self.sel_index < len(fields):
+            fields[self.sel_index]["fill"] = val
+            self._sync_swatch(val)
+            self._update_preview()
+        else:
+            self.draw_fill = val
+            self._sync_swatch(val)
+
     def _choose_color(self):
-        init = self.draw_fill if isinstance(self.draw_fill, (tuple, list)) else (0, 17, 40)
+        cur = self.draw_fill
+        fields = self._cur_fields()
+        if self.sel_index is not None and 0 <= self.sel_index < len(fields):
+            cur = fields[self.sel_index]["fill"]
+        init = cur if isinstance(cur, (tuple, list)) else (0, 17, 40)
         res = colorchooser.askcolor(color=self._rgb_hex(init),
                                     title="Feldfarbe wählen")
         if res and res[0]:
-            self._set_draw_fill(tuple(int(c) for c in res[0]))
-            self._log(f"Feldfarbe gesetzt: RGB {self.draw_fill}")
+            self._apply_fill(tuple(int(c) for c in res[0]))
 
     def _start_pick(self):
         if not self.selected_path:
             return
         self._picking = True
-        self.canvas.config(cursor="dotbox")
-        self._log("Pipette aktiv: in die Vorschau klicken, um eine Farbe zu übernehmen.")
+        try:
+            self.canvas.config(cursor="dotbox")
+        except tk.TclError:
+            self.canvas.config(cursor="crosshair")
+        self._log("Pipette: in die Vorschau klicken, um eine Farbe zu übernehmen.")
 
     def _pick_color_at(self, e):
         self._picking = False
         self.canvas.config(cursor="crosshair")
         if not self.selected_path:
             return
-        s = self.preview_scale or 1.0
-        cx, cy = self._cxy(e)
-        ox, oy = int(cx / s), int(cy / s)
+        ox, oy = self._oxy(e)
         try:
             img = Image.open(self.selected_path).convert("RGB")
-            ox = max(0, min(ox, img.width - 1))
-            oy = max(0, min(oy, img.height - 1))
+            ox = max(0, min(int(ox), img.width - 1))
+            oy = max(0, min(int(oy), img.height - 1))
             col = img.getpixel((ox, oy))
         except Exception as ex:  # noqa: BLE001
             self._log(f"Pipette-Fehler: {ex}")
             return
-        self._set_draw_fill(tuple(col))
-        self._log(f"Farbe übernommen: RGB {tuple(col)} bei ({ox},{oy})")
+        self._log(f"Farbe übernommen: RGB {tuple(col)}")
+        self._apply_fill(tuple(col))
 
-    def _render_thumb(self, path):
-        """Rendert ein (anonymisiertes) Galerie-Vorschaubild – ohne OCR (schnell)."""
-        if path not in self.thumb_labels:
+    # ----------------------------------------------------- Koordinaten/Hit ---
+    def _cxy(self, e):
+        return self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+
+    def _oxy(self, e):
+        """Maus -> Originalbild-Koordinaten (float)."""
+        s = self.preview_scale or 1.0
+        cx, cy = self._cxy(e)
+        return cx / s, cy / s
+
+    def _disp(self, ox, oy):
+        s = self.preview_scale or 1.0
+        return ox * s, oy * s
+
+    @staticmethod
+    def _handles(f):
+        mx, my = (f["x0"] + f["x1"]) / 2, (f["y0"] + f["y1"]) / 2
+        return {"nw": (f["x0"], f["y0"]), "n": (mx, f["y0"]), "ne": (f["x1"], f["y0"]),
+                "e": (f["x1"], my), "se": (f["x1"], f["y1"]), "s": (mx, f["y1"]),
+                "sw": (f["x0"], f["y1"]), "w": (f["x0"], my)}
+
+    def _handle_at(self, f, ox, oy):
+        tol = max((HANDLE + 3) / (self.preview_scale or 1.0), 5)
+        for name, (hx, hy) in self._handles(f).items():
+            if abs(ox - hx) <= tol and abs(oy - hy) <= tol:
+                return name
+        return None
+
+    def _field_at(self, ox, oy):
+        found = None
+        for i, f in enumerate(self._cur_fields()):
+            if f["x0"] <= ox <= f["x1"] and f["y0"] <= oy <= f["y1"]:
+                found = i  # spaeteres Feld liegt oben
+        return found
+
+    # ----------------------------------------------------------- Rendering ---
+    def _update_preview(self):
+        if not self._render_image():
             return
+        self._draw_overlays()
+        if self.selected_path in self.thumb_labels:
+            self._render_thumb(self.selected_path)
+
+    def _render_image(self):
+        path = self._selected_preview_path()
+        if not path:
+            return False
         base = os.path.basename(path)
+        self.preview_base = base
         try:
-            anon, _ = ac.anonymize_image(
-                Image.open(path), lines=self.lines_var.get(),
-                extra=list(self.drawn.get(base, [])),
-                header_fill=self.fill_var.get())
+            img = Image.open(path)
         except Exception as e:  # noqa: BLE001
-            self._log(f"Thumbnail-Fehler {base}: {e}")
+            self._log(f"Vorschau-Fehler: {e}")
+            return False
+        self._ensure_seeded(base, img)
+        ocr = self.ocr_name_var.get() if self.use_ocr_var.get() else None
+        try:
+            anon, applied = ac.anonymize_image(
+                img, lines=0, extra=self._fields_as_extra(base), ocr_names=ocr)
+        except Exception as e:  # noqa: BLE001
+            self._log(f"Vorschau-Fehler: {e}")
+            return False
+
+        ow, oh = anon.size
+        self._orig_size = (ow, oh)
+        cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
+        cw = cw if cw > 50 else PREVIEW_MAX[0]
+        ch = ch if ch > 50 else PREVIEW_MAX[1]
+        self._last_canvas_size = (cw, ch)
+        fit = min(cw / ow, ch / oh) if ow and oh else 1.0
+        disp_scale = fit * self.zoom
+        dw, dh = max(1, int(ow * disp_scale)), max(1, int(oh * disp_scale))
+        self.preview_scale = disp_scale
+        prev = anon.resize((dw, dh))
+        self._preview_imgtk = ImageTk.PhotoImage(prev)
+        self.canvas.delete("all")
+        self.canvas.create_image(0, 0, anchor="nw", image=self._preview_imgtk,
+                                 tags="img")
+        self.canvas.configure(scrollregion=(0, 0, dw, dh))
+        return True
+
+    def _draw_overlays(self):
+        """Zeichnet Feld-Umrandungen + Griffe des ausgewaehlten Feldes."""
+        self.canvas.delete("ov")
+        s = self.preview_scale or 1.0
+        fields = self._cur_fields()
+        for i, f in enumerate(fields):
+            sel = (i == self.sel_index)
+            self.canvas.create_rectangle(
+                f["x0"] * s, f["y0"] * s, f["x1"] * s, f["y1"] * s,
+                outline=(SEL_COLOR if sel else FIELD_COLOR),
+                width=(2 if sel else 1), tags="ov")
+        if self.sel_index is not None and 0 <= self.sel_index < len(fields):
+            for hx, hy in self._handles(fields[self.sel_index]).values():
+                cx, cy = hx * s, hy * s
+                self.canvas.create_rectangle(cx - HANDLE, cy - HANDLE,
+                                             cx + HANDLE, cy + HANDLE,
+                                             fill=SEL_COLOR, outline="#333", tags="ov")
+
+    # --------------------------------------------------------- Maus-Editor ---
+    def _on_press(self, e):
+        self.canvas.focus_set()
+        if self._picking:
+            self._pick_color_at(e)
             return
-        anon.thumbnail(THUMB_MAX)
-        ph = ImageTk.PhotoImage(anon)
-        self._thumb_refs[path] = ph
-        self.thumb_labels[path].config(image=ph)
+        if not self.preview_base:
+            return
+        ox, oy = self._oxy(e)
+        fields = self._cur_fields()
+        # 1) Griff des ausgewaehlten Feldes -> Groesse aendern
+        if self.sel_index is not None and 0 <= self.sel_index < len(fields):
+            h = self._handle_at(fields[self.sel_index], ox, oy)
+            if h:
+                f = fields[self.sel_index]
+                self._action = ("resize", h)
+                self._press = (ox, oy)
+                self._orig_box = (f["x0"], f["y0"], f["x1"], f["y1"])
+                return
+        # 2) in einem Feld -> auswaehlen + verschieben
+        idx = self._field_at(ox, oy)
+        if idx is not None:
+            self.sel_index = idx
+            f = fields[idx]
+            self._sync_swatch(f["fill"])
+            self._action = ("move",)
+            self._press = (ox, oy)
+            self._orig_box = (f["x0"], f["y0"], f["x1"], f["y1"])
+            self._draw_overlays()
+            return
+        # 3) leere Flaeche -> neues Feld aufziehen
+        self.sel_index = None
+        self._sync_swatch(self.draw_fill)
+        self._action = ("new",)
+        self._press = (ox, oy)
+        dx, dy = self._disp(ox, oy)
+        self._rubber = self.canvas.create_rectangle(
+            dx, dy, dx, dy, outline=SEL_COLOR, width=2, dash=(3, 2))
+        self._draw_overlays()
 
-    def _select_path(self, path):
-        self.selected_path = path
-        self._highlight_selected()
+    def _on_drag(self, e):
+        if not self._action:
+            return
+        ow, oh = self._orig_size
+        ox, oy = self._oxy(e)
+        ox = max(0, min(ox, ow)); oy = max(0, min(oy, oh))
+        kind = self._action[0]
+        fields = self._cur_fields()
+        if kind == "new":
+            x0, y0 = self._press
+            self.canvas.coords(self._rubber, *self._disp(min(x0, ox), min(y0, oy)),
+                               *self._disp(max(x0, ox), max(y0, oy)))
+        elif kind == "move" and self.sel_index is not None:
+            x0, y0, x1, y1 = self._orig_box
+            w, h = x1 - x0, y1 - y0
+            nx0 = max(0, min(x0 + (ox - self._press[0]), ow - w))
+            ny0 = max(0, min(y0 + (oy - self._press[1]), oh - h))
+            f = fields[self.sel_index]
+            f["x0"], f["y0"], f["x1"], f["y1"] = \
+                int(nx0), int(ny0), int(nx0 + w), int(ny0 + h)
+            self._draw_overlays()
+        elif kind == "resize" and self.sel_index is not None:
+            name = self._action[1]
+            x0, y0, x1, y1 = self._orig_box
+            if "w" in name:
+                x0 = min(ox, x1 - 3)
+            if "e" in name:
+                x1 = max(ox, x0 + 3)
+            if "n" in name:
+                y0 = min(oy, y1 - 3)
+            if "s" in name:
+                y1 = max(oy, y0 + 3)
+            f = fields[self.sel_index]
+            f["x0"], f["y0"], f["x1"], f["y1"] = int(x0), int(y0), int(x1), int(y1)
+            self._draw_overlays()
+
+    def _on_release(self, e):
+        act = self._action
+        self._action = None
+        if not act:
+            return
+        if act[0] == "new":
+            if self._rubber:
+                self.canvas.delete(self._rubber)
+                self._rubber = None
+            ow, oh = self._orig_size
+            ox, oy = self._oxy(e)
+            ox = max(0, min(ox, ow)); oy = max(0, min(oy, oh))
+            x0, y0 = self._press
+            xa, xb = sorted((x0, ox)); ya, yb = sorted((y0, oy))
+            s = self.preview_scale or 1.0
+            if (xb - xa) * s < 4 or (yb - ya) * s < 4:
+                self._update_preview()      # zu klein -> nur Auswahl aufheben
+                return
+            fields = self._cur_fields()
+            fields.append({"x0": int(xa), "y0": int(ya), "x1": int(xb),
+                           "y1": int(yb), "fill": self.draw_fill, "kind": "manual"})
+            self.sel_index = len(fields) - 1
+            self._log(f"Feld hinzugefügt: ({int(xa)},{int(ya)},{int(xb)},{int(yb)})")
         self._update_preview()
 
-    def _rerender_all_thumbs(self):
-        for p in list(self.image_paths):
-            self._render_thumb(p)
+    def _on_hover(self, e):
+        """Cursor anpassen: Griff -> Resize, Feldinneres -> Move."""
+        if self._action or self._picking or not self.preview_base:
+            return
+        ox, oy = self._oxy(e)
+        fields = self._cur_fields()
+        cur = "crosshair"
+        if self.sel_index is not None and 0 <= self.sel_index < len(fields):
+            h = self._handle_at(fields[self.sel_index], ox, oy)
+            if h:
+                cur = {"n": "size_ns", "s": "size_ns",
+                       "e": "size_we", "w": "size_we",
+                       "nw": "size_nw_se", "se": "size_nw_se",
+                       "ne": "size_ne_sw", "sw": "size_ne_sw"}.get(h, "fleur")
+        if cur == "crosshair" and self._field_at(ox, oy) is not None:
+            cur = "fleur"
+        try:
+            self.canvas.config(cursor=cur)
+        except tk.TclError:
+            self.canvas.config(cursor="")
 
-    def _on_options(self):
-        """Optionen (Zeilen/Füllfarbe) wirken auf Galerie UND grosse Vorschau."""
-        self._rerender_all_thumbs()
+    def _on_rightclick(self, e):
+        if not self.preview_base:
+            return
+        ox, oy = self._oxy(e)
+        idx = self._field_at(ox, oy)
+        if idx is None:
+            return
+        f = self._cur_fields().pop(idx)
+        if self.sel_index == idx:
+            self.sel_index = None
+        elif self.sel_index is not None and self.sel_index > idx:
+            self.sel_index -= 1
+        self._log(f"Feld entfernt: ({f['x0']},{f['y0']},{f['x1']},{f['y1']})")
         self._update_preview()
 
-    def _highlight_selected(self):
-        for p, cell in self.thumb_cells.items():
-            cell.configure(highlightbackground=(
-                "#1a73e8" if p == self.selected_path else "#2b2b2b"))
+    def _delete_selected(self):
+        fields = self._cur_fields()
+        if self.sel_index is not None and 0 <= self.sel_index < len(fields):
+            fields.pop(self.sel_index)
+            self.sel_index = None
+            self._sync_swatch(self.draw_fill)
+            self._update_preview()
 
+    def _clear_fields(self):
+        if self.preview_base:
+            self.fields[self.preview_base] = []
+            self.sel_index = None
+            self._update_preview()
+
+    # ------------------------------------------------------------ Actions ---
     def _default_outdir(self):
         if not self.inputs:
             return
@@ -407,17 +708,6 @@ class App(tk.Tk):
         self.out_var.set(os.path.join(os.path.dirname(base.rstrip("/\\")) or base,
                                       "annonymisiert"))
 
-    def _parse_extra(self):
-        v = self.extra_var.get().strip()
-        if not v:
-            return []
-        try:
-            return ac._parse_extra([v])
-        except Exception as e:  # noqa: BLE001
-            messagebox.showerror("Zusatzfeld ungültig", str(e))
-            return []
-
-    # ------------------------------------------------------------ Actions ---
     def _pick_files(self):
         paths = filedialog.askopenfilenames(
             title="Bilder wählen",
@@ -448,141 +738,18 @@ class App(tk.Tk):
         self.inputs = []
         self.selected_path = None
         self.preview_base = None
+        self.sel_index = None
+        self.fields.clear()
         self._refresh_gallery()
         self.canvas.delete("all")
 
     def _selected_preview_path(self):
-        """Pfad des aktuell gewaehlten Galerie-Bildes (oder erstes)."""
         if self.selected_path and os.path.exists(self.selected_path):
             return self.selected_path
         paths = list(ac.iter_image_paths(self.inputs))
         return paths[0] if paths else None
 
-    def _common_kwargs(self):
-        return dict(
-            lines=self.lines_var.get(),
-            extra=self._parse_extra(),
-            ocr_names=self.ocr_name_var.get() if self.use_ocr_var.get() else None,
-            header_fill=self.fill_var.get(),
-            extra_fill="auto",
-            ocr_fill="auto",
-        )
-
-    def _update_preview(self):
-        path = self._selected_preview_path()
-        if not path:
-            return
-        base = os.path.basename(path)
-        self.preview_base = base
-        kwargs = self._common_kwargs()
-        # globale (Text-)Zusatzfelder + die per Maus gezeichneten dieses Bildes
-        kwargs["extra"] = list(kwargs.get("extra") or []) + \
-            list(self.drawn.get(base, []))
-        try:
-            img = Image.open(path)
-            anon, applied = ac.anonymize_image(img, **kwargs)
-        except Exception as e:  # noqa: BLE001
-            self._log(f"Vorschau-Fehler: {e}")
-            return
-
-        # Anzeigegroesse = an Canvas einpassen (Fit) * Zoomfaktor. Direkt aus dem
-        # Originalbild skalieren (auch beim Hineinzoomen scharf). Vor der
-        # Realisierung des Fensters auf PREVIEW_MAX zurueckfallen.
-        ow, oh = anon.size
-        cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
-        cw = cw if cw > 50 else PREVIEW_MAX[0]
-        ch = ch if ch > 50 else PREVIEW_MAX[1]
-        self._last_canvas_size = (cw, ch)
-        fit = min(cw / ow, ch / oh) if ow and oh else 1.0
-        disp_scale = fit * self.zoom
-        dw, dh = max(1, int(ow * disp_scale)), max(1, int(oh * disp_scale))
-        prev = anon.resize((dw, dh))
-        self.preview_disp = (dw, dh)
-        self.preview_scale = disp_scale
-        self._preview_imgtk = ImageTk.PhotoImage(prev)
-        self.canvas.delete("all")
-        self.canvas.create_image(0, 0, anchor="nw", image=self._preview_imgtk)
-        self.canvas.configure(scrollregion=(0, 0, dw, dh))
-        # gezeichnete Felder zusaetzlich rot umranden (zum Erkennen/Loeschen)
-        s = self.preview_scale
-        for box in self.drawn.get(base, []):
-            x0, y0, x1, y1 = box[:4]
-            self.canvas.create_rectangle(x0 * s, y0 * s, x1 * s, y1 * s,
-                                         outline="#ff3030", width=2)
-        # Galerie-Thumbnail des aktuellen Bildes mitziehen
-        if self.selected_path in self.thumb_labels:
-            self._render_thumb(self.selected_path)
-        self._log(f"Vorschau {base}: {len(applied)} Feld(er)")
-
-    # ------------------------------------------------- Maus: Felder ziehen ---
-    def _cxy(self, e):
-        """Widget- in Canvas-(Inhalts-)Koordinaten umrechnen (beruecksichtigt Scroll)."""
-        return self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
-
-    def _on_press(self, e):
-        if self._picking:                  # Pipette: Farbe aus Bild aufnehmen
-            self._pick_color_at(e)
-            return
-        x, y = self._cxy(e)
-        rid = self.canvas.create_rectangle(x, y, x, y,
-                                           outline="#ff3030", width=2, dash=(3, 2))
-        self._drag = (x, y, rid)
-
-    def _on_drag(self, e):
-        if self._drag:
-            x0, y0, rid = self._drag
-            x, y = self._cxy(e)
-            self.canvas.coords(rid, x0, y0, x, y)
-
-    def _on_release(self, e):
-        if not self._drag or not self.preview_base:
-            self._drag = None
-            return
-        x0, y0, rid = self._drag
-        self._drag = None
-        self.canvas.delete(rid)
-        x, y = self._cxy(e)
-        dw, dh = self.preview_disp
-        xa, xb = sorted((x0, x))
-        ya, yb = sorted((y0, y))
-        # auf Bildflaeche begrenzen
-        xa, xb = max(0, min(xa, dw)), max(0, min(xb, dw))
-        ya, yb = max(0, min(ya, dh)), max(0, min(yb, dh))
-        if xb - xa < 4 or yb - ya < 4:
-            return  # zu kleiner Klick -> ignorieren
-        s = self.preview_scale or 1.0
-        box = (int(xa / s), int(ya / s), int(xb / s), int(yb / s), self.draw_fill)
-        self.drawn.setdefault(self.preview_base, []).append(box)
-        self._log(f"Feld hinzugefügt ({self.preview_base}): {box}")
-        self._update_preview()
-
-    def _on_rightclick(self, e):
-        base = self.preview_base
-        boxes = self.drawn.get(base or "", [])
-        if not boxes:
-            return
-        s = self.preview_scale or 1.0
-        cx, cy = self._cxy(e)
-        ox, oy = cx / s, cy / s
-        for i, box in enumerate(boxes):
-            x0, y0, x1, y1 = box[:4]
-            if x0 <= ox <= x1 and y0 <= oy <= y1:
-                removed = boxes.pop(i)
-                self._log(f"Feld entfernt ({base}): {removed}")
-                self._update_preview()
-                return
-
-    def _undo_drawn(self):
-        boxes = self.drawn.get(self.preview_base or "", [])
-        if boxes:
-            boxes.pop()
-            self._update_preview()
-
-    def _clear_drawn(self):
-        if self.drawn.get(self.preview_base or ""):
-            self.drawn[self.preview_base] = []
-            self._update_preview()
-
+    # --------------------------------------------------------------- Run ---
     def _run(self):
         if not self.inputs:
             messagebox.showwarning("Keine Bilder", "Bitte zuerst Bilder wählen.")
@@ -592,22 +759,33 @@ class App(tk.Tk):
             messagebox.showwarning("Kein Ausgabeordner",
                                    "Bitte einen Ausgabeordner wählen.")
             return
+        # sicherstellen, dass jedes Bild Felder hat (Header erkannt)
+        for p in self.image_paths:
+            base = os.path.basename(p)
+            if base not in self.fields:
+                try:
+                    self._ensure_seeded(base, Image.open(p))
+                except Exception:  # noqa: BLE001
+                    pass
+        per_file = {os.path.basename(p): self._fields_as_extra(os.path.basename(p))
+                    for p in self.image_paths}
+        ocr = self.ocr_name_var.get() if self.use_ocr_var.get() else None
+        kwargs = dict(lines=0, extra=[], ocr_names=ocr,
+                      header_fill="black", extra_fill="auto", ocr_fill="auto")
         self.run_btn.state(["disabled"])
         self._log(f"--- Starte Anonymisierung nach: {out} ---")
-        kwargs = self._common_kwargs()
-        t = threading.Thread(target=self._worker, args=(out, kwargs), daemon=True)
+        t = threading.Thread(target=self._worker, args=(out, kwargs, per_file),
+                             daemon=True)
         t.start()
 
-    def _worker(self, out, kwargs):
+    def _worker(self, out, kwargs, per_file):
         def progress(path, applied, err):
             name = os.path.basename(path)
             self._msg_q.put(("log", f"  {name}: "
                              + (err if err else f"{len(applied)} Feld(er)")))
         try:
-            res = ac.process(self.inputs, out, overwrite=True,
-                             progress=progress,
-                             per_file_extra={k: list(v) for k, v in self.drawn.items()},
-                             **kwargs)
+            res = ac.process(self.inputs, out, overwrite=True, progress=progress,
+                             per_file_extra=per_file, **kwargs)
             self._msg_q.put(("log", f"Fertig: {len(res)} Bild(er) geschrieben."))
             self._msg_q.put(("done", out))
         except Exception as e:  # noqa: BLE001
@@ -632,15 +810,14 @@ class App(tk.Tk):
 
 
 def _enable_dpi_awareness():
-    """Macht den Prozess unter Windows DPI-aware -> scharfer Text bei
-    Skalierung >100 %. Muss VOR dem Erzeugen des Fensters laufen."""
+    """Macht den Prozess unter Windows DPI-aware -> scharfer Text."""
     try:
         import ctypes
         try:
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)  # System-DPI-aware
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
         except Exception:  # noqa: BLE001
-            ctypes.windll.user32.SetProcessDPIAware()        # aelterer Fallback
-    except Exception:  # noqa: BLE001 (nicht-Windows o. nicht verfuegbar)
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:  # noqa: BLE001
         pass
 
 

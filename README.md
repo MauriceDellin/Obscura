@@ -39,16 +39,23 @@ python anonymize_gui.py
    abgedeckt ist.
 3. Optionen prüfen (Header-Zeilen = 2 für Name + Geburtsdatum), ggf. Name für
    OCR eintragen
-4. **Vorschau** (rechts) zeigt das fertige Ergebnis des gewählten Bildes
-5. **Zusatzfelder mit der Maus aufziehen:** einfach im Vorschaubild ein Rechteck
-   ziehen – es wird sofort gefüllt und rot umrandet. **Rechtsklick** auf ein Feld
-   löscht es; die Knöpfe „Letztes Feld" / „Felder löschen" helfen ebenfalls.
-   Gezeichnete Felder gelten **nur für das jeweilige Bild** (pro Datei gemerkt).
-   - **Feldfarbe:** Standard ist `auto` (Hintergrund wird gemittelt). Für einen
-     exakten Treffer auf farbigen Panels die **Pipette** nutzen: anklicken, dann
-     in die Vorschau auf die gewünschte Hintergrundfarbe klicken – die Farbe wird
-     pixelgenau übernommen. Alternativ über **„Farbe…"** einen Farbwähler öffnen.
-     Die gewählte Farbe gilt für die danach gezogenen Felder.
+4. **Vorschau = Feld-Editor** (rechts): Das automatisch erkannte Header-Feld wird
+   bereits angezeigt. **Jedes** Feld (auch das automatische) ist bearbeitbar:
+   - **Neues Feld:** auf leerer Fläche ein Rechteck aufziehen.
+   - **Auswählen:** Feld anklicken (gelb umrandet, mit Griffen).
+   - **Verschieben:** in ein ausgewähltes Feld hineinziehen.
+   - **Größe ändern:** an einem der 8 Griffe ziehen.
+   - **Löschen:** **Entf**-Taste oder **Rechtsklick** auf das Feld
+     (oder Knopf „Auswahl löschen" / „Alle Felder").
+   - Felder gelten **nur für das jeweilige Bild** (pro Datei gemerkt).
+   - **Feldfarbe:** Ein Feld auswählen → die Farbeinstellung wirkt **auf dieses
+     Feld**; ohne Auswahl gilt sie als Standard für neue Felder. Standard ist
+     `auto` (Hintergrund gemittelt). Für einen exakten Treffer auf farbigen Panels
+     die **Pipette** nutzen: anklicken, dann in der Vorschau auf die gewünschte
+     Farbe klicken – sie wird pixelgenau übernommen. Alternativ **„Farbe…"** für
+     einen Farbwähler.
+   - „**Auto-Felder neu erkennen**" setzt die Header-Felder anhand der aktuellen
+     Zeilenzahl/Füllung neu (manuelle Felder bleiben erhalten).
 6. **Zoom für präzises Zeichnen:** mit **Strg+Mausrad** (oder den Knöpfen
    `+` / `−` / `Fit`) in die Vorschau hineinzoomen; bei Vergrößerung mit den
    Scrollleisten bzw. Mausrad (horizontal: Umschalt+Mausrad) verschieben. So
