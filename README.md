@@ -151,3 +151,9 @@ Hinweise:
 - `version_info.txt`  – Versions-Metadaten der `.exe`
 - `installer.iss`     – Inno-Setup-Skript (→ Installer)
 - `build.bat`         – baut Icon, EXE und Installer in einem Rutsch
+
+## Lizenz
+
+[MIT](LICENSE) © 2026 Maurice Dellin. Nutzung auf eigene Verantwortung – die
+Pixel-Schwärzung ersetzt keine zertifizierte/DICOM-konforme Anonymisierung;
+Ergebnisse immer prüfen.
