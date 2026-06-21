@@ -35,3 +35,6 @@ logo.png
 Thumbs.db
 .idea/
 .vscode/
+
+# Lokale Beispielbilder (Patientendaten – NIE committen!)
+Beispielbilder/
