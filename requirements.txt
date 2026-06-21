@@ -1,0 +1,17 @@
+# Abhängigkeiten der Röntgenbild-Anonymisierung
+# Installation:  py -3.13 -m pip install -r requirements.txt
+#
+# Hinweis: tkinter ist KEINE pip-Abhängigkeit, sondern Teil von Python
+# (bei Windows-/Mac-Python dabei; unter Linux ggf. python3-tk via System-Paket).
+
+# Kern (Pflicht) – Bildverarbeitung + Bildanzeige in der GUI
+pillow>=10.0
+
+# OCR (optional) – nur für die Namenssuche im ganzen Bild.
+# Benötigt zusätzlich das Tesseract-Programm (UB-Mannheim-Build), das NICHT
+# über pip kommt: https://github.com/UB-Mannheim/tesseract/wiki
+pytesseract>=0.3.13
+
+# Nur zum Paketieren der EXE/des Installers (nicht für den Betrieb nötig);
+# build.bat installiert es bei Bedarf selbst:
+# pyinstaller>=6.0
