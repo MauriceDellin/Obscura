@@ -1,0 +1,29 @@
+# === WICHTIG: keine Patientendaten / Bilder ins Repo! ===
+*.png
+*.jpg
+*.jpeg
+*.tif
+*.tiff
+*.bmp
+*.gif
+*.dcm
+*.dicom
+
+# Ausgabe-/Datenordner
+annonymisiert/
+anonymisiert/
+Rohdaten/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
