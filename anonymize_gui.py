@@ -51,6 +51,7 @@ class App(tk.Tk):
         self.preview_scale = 1.0       # Anzeige / Original
         self.preview_disp = (0, 0)     # Groesse des angezeigten (skalierten) Bildes
         self._drag = None              # (startx, starty, canvas-rect-id)
+        self.zoom = 1.0                # 1.0 = einpassen (Fit); >1 = hineingezoomt
 
         # Galerie-Zustand
         self.image_paths = []          # alle (aufgeloesten) Bildpfade
@@ -150,27 +151,48 @@ class App(tk.Tk):
                                   command=self._run)
         self.run_btn.pack(fill="x", pady=(8, 0))
 
-        # --- Vorschau (interaktiv) + Log ---
+        # --- Vorschau (interaktiv, zoombar) + Log ---
         pv = ttk.LabelFrame(
-            right, text="Vorschau – Zusatzfeld mit der Maus aufziehen", padding=8)
+            right, text="Vorschau – ziehen = Feld · Rechtsklick = löschen · "
+                        "Strg+Mausrad = Zoom", padding=8)
         pv.pack(fill="both", expand=True)
         bar = ttk.Frame(pv)
         bar.pack(fill="x")
-        ttk.Label(bar, foreground="#555",
-                  text="Im Bild ziehen = Feld hinzufügen   ·   Rechtsklick = Feld löschen"
-                  ).pack(side="left")
-        ttk.Button(bar, text="Letztes Feld",
-                   command=self._undo_drawn).pack(side="right")
         ttk.Button(bar, text="Felder löschen",
-                   command=self._clear_drawn).pack(side="right", padx=(0, 4))
-        self.canvas = tk.Canvas(pv, background="#222", highlightthickness=0,
+                   command=self._clear_drawn).pack(side="right")
+        ttk.Button(bar, text="Letztes Feld",
+                   command=self._undo_drawn).pack(side="right", padx=(0, 4))
+        # Zoom-Steuerung
+        ttk.Button(bar, text="Fit", width=4,
+                   command=self._zoom_reset).pack(side="left")
+        ttk.Button(bar, text="−", width=3,
+                   command=self._zoom_out).pack(side="left", padx=(6, 0))
+        self.zoom_lbl = ttk.Label(bar, text="×1.0", width=6, anchor="center")
+        self.zoom_lbl.pack(side="left")
+        ttk.Button(bar, text="+", width=3,
+                   command=self._zoom_in).pack(side="left")
+
+        cwrap = ttk.Frame(pv)
+        cwrap.pack(fill="both", expand=True, pady=(6, 0))
+        self.canvas = tk.Canvas(cwrap, background="#222", highlightthickness=0,
                                 cursor="crosshair")
-        self.canvas.pack(fill="both", expand=True, pady=(6, 0))
+        hsb = ttk.Scrollbar(cwrap, orient="horizontal", command=self.canvas.xview)
+        vsb = ttk.Scrollbar(cwrap, orient="vertical", command=self.canvas.yview)
+        self.canvas.configure(xscrollcommand=hsb.set, yscrollcommand=vsb.set)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        vsb.grid(row=0, column=1, sticky="ns")
+        hsb.grid(row=1, column=0, sticky="ew")
+        cwrap.rowconfigure(0, weight=1)
+        cwrap.columnconfigure(0, weight=1)
+
         self.canvas.bind("<ButtonPress-1>", self._on_press)
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<Button-3>", self._on_rightclick)
         self.canvas.bind("<Configure>", self._on_canvas_resize)
+        self.canvas.bind("<MouseWheel>", self._on_canvas_wheel)          # scrollen
+        self.canvas.bind("<Shift-MouseWheel>", self._on_canvas_wheel_h)  # horizontal
+        self.canvas.bind("<Control-MouseWheel>", self._on_ctrl_wheel)    # zoomen
         self._last_canvas_size = (0, 0)
 
         self.log = tk.Text(right, height=8, width=50, state="disabled")
@@ -234,6 +256,32 @@ class App(tk.Tk):
         if abs(e.width - lw) > 4 or abs(e.height - lh) > 4:
             if self.selected_path:
                 self._update_preview()
+
+    # ------------------------------------------------------------- Zoom ---
+    def _set_zoom(self, z):
+        self.zoom = max(0.2, min(8.0, z))
+        self.zoom_lbl.config(text=f"×{self.zoom:.1f}")
+        if self.selected_path:
+            self._update_preview()
+
+    def _zoom_in(self):
+        self._set_zoom(self.zoom * 1.25)
+
+    def _zoom_out(self):
+        self._set_zoom(self.zoom / 1.25)
+
+    def _zoom_reset(self):
+        self._set_zoom(1.0)
+
+    def _on_ctrl_wheel(self, e):
+        self._set_zoom(self.zoom * (1.25 if e.delta > 0 else 0.8))
+        return "break"
+
+    def _on_canvas_wheel(self, e):
+        self.canvas.yview_scroll(int(-e.delta / 120), "units")
+
+    def _on_canvas_wheel_h(self, e):
+        self.canvas.xview_scroll(int(-e.delta / 120), "units")
 
     def _render_thumb(self, path):
         """Rendert ein (anonymisiertes) Galerie-Vorschaubild – ohne OCR (schnell)."""
@@ -358,21 +406,24 @@ class App(tk.Tk):
             self._log(f"Vorschau-Fehler: {e}")
             return
 
-        # Vorschau an die aktuelle Canvas-Groesse anpassen (kein Clipping; groesseres
-        # Fenster -> groessere Vorschau -> feineres Zeichnen). Vor der Realisierung
-        # des Fensters auf PREVIEW_MAX zurueckfallen.
+        # Anzeigegroesse = an Canvas einpassen (Fit) * Zoomfaktor. Direkt aus dem
+        # Originalbild skalieren (auch beim Hineinzoomen scharf). Vor der
+        # Realisierung des Fensters auf PREVIEW_MAX zurueckfallen.
+        ow, oh = anon.size
         cw, ch = self.canvas.winfo_width(), self.canvas.winfo_height()
-        target = (cw if cw > 50 else PREVIEW_MAX[0],
-                  ch if ch > 50 else PREVIEW_MAX[1])
+        cw = cw if cw > 50 else PREVIEW_MAX[0]
+        ch = ch if ch > 50 else PREVIEW_MAX[1]
         self._last_canvas_size = (cw, ch)
-        prev = anon.copy()
-        prev.thumbnail(target)
-        self.preview_disp = prev.size
-        self.preview_scale = prev.size[0] / anon.size[0] if anon.size[0] else 1.0
+        fit = min(cw / ow, ch / oh) if ow and oh else 1.0
+        disp_scale = fit * self.zoom
+        dw, dh = max(1, int(ow * disp_scale)), max(1, int(oh * disp_scale))
+        prev = anon.resize((dw, dh))
+        self.preview_disp = (dw, dh)
+        self.preview_scale = disp_scale
         self._preview_imgtk = ImageTk.PhotoImage(prev)
         self.canvas.delete("all")
-        self.canvas.config(width=prev.size[0], height=prev.size[1])
         self.canvas.create_image(0, 0, anchor="nw", image=self._preview_imgtk)
+        self.canvas.configure(scrollregion=(0, 0, dw, dh))
         # gezeichnete Felder zusaetzlich rot umranden (zum Erkennen/Loeschen)
         s = self.preview_scale
         for (x0, y0, x1, y1) in self.drawn.get(base, []):
@@ -384,15 +435,21 @@ class App(tk.Tk):
         self._log(f"Vorschau {base}: {len(applied)} Feld(er)")
 
     # ------------------------------------------------- Maus: Felder ziehen ---
+    def _cxy(self, e):
+        """Widget- in Canvas-(Inhalts-)Koordinaten umrechnen (beruecksichtigt Scroll)."""
+        return self.canvas.canvasx(e.x), self.canvas.canvasy(e.y)
+
     def _on_press(self, e):
-        rid = self.canvas.create_rectangle(e.x, e.y, e.x, e.y,
+        x, y = self._cxy(e)
+        rid = self.canvas.create_rectangle(x, y, x, y,
                                            outline="#ff3030", width=2, dash=(3, 2))
-        self._drag = (e.x, e.y, rid)
+        self._drag = (x, y, rid)
 
     def _on_drag(self, e):
         if self._drag:
             x0, y0, rid = self._drag
-            self.canvas.coords(rid, x0, y0, e.x, e.y)
+            x, y = self._cxy(e)
+            self.canvas.coords(rid, x0, y0, x, y)
 
     def _on_release(self, e):
         if not self._drag or not self.preview_base:
@@ -401,9 +458,10 @@ class App(tk.Tk):
         x0, y0, rid = self._drag
         self._drag = None
         self.canvas.delete(rid)
+        x, y = self._cxy(e)
         dw, dh = self.preview_disp
-        xa, xb = sorted((x0, e.x))
-        ya, yb = sorted((y0, e.y))
+        xa, xb = sorted((x0, x))
+        ya, yb = sorted((y0, y))
         # auf Bildflaeche begrenzen
         xa, xb = max(0, min(xa, dw)), max(0, min(xb, dw))
         ya, yb = max(0, min(ya, dh)), max(0, min(yb, dh))
@@ -421,7 +479,8 @@ class App(tk.Tk):
         if not boxes:
             return
         s = self.preview_scale or 1.0
-        ox, oy = e.x / s, e.y / s
+        cx, cy = self._cxy(e)
+        ox, oy = cx / s, cy / s
         for i, (x0, y0, x1, y1) in enumerate(boxes):
             if x0 <= ox <= x1 and y0 <= oy <= y1:
                 removed = boxes.pop(i)

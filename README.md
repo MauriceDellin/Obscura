@@ -45,11 +45,15 @@ python anonymize_gui.py
    gefüllt und rot umrandet. **Rechtsklick** auf ein Feld löscht es; die Knöpfe
    „Letztes Feld" / „Felder löschen" helfen ebenfalls.
    Gezeichnete Felder gelten **nur für das jeweilige Bild** (pro Datei gemerkt).
-6. Ausgabeordner wählen → **„Alle anonymisieren"**
+6. **Zoom für präzises Zeichnen:** mit **Strg+Mausrad** (oder den Knöpfen
+   `+` / `−` / `Fit`) in die Vorschau hineinzoomen; bei Vergrößerung mit den
+   Scrollleisten bzw. Mausrad (horizontal: Umschalt+Mausrad) verschieben. So
+   lassen sich auch kleine Felder pixelgenau aufziehen.
+7. Ausgabeordner wählen → **„Alle anonymisieren"**
 
-> Tipp: Mausgezogene Felder haben durch die verkleinerte Vorschau ein paar
-> Pixel Toleranz. Für pixelgenaue Felder die CLI-Option `--extra` mit exakten
-> Koordinaten nutzen (siehe unten). Die Füllung `auto` gleicht die Farbe an den
+> Tipp: Für sehr präzise Felder vor dem Ziehen hineinzoomen (z. B. ×4 → unter
+> einem Originalpixel pro Anzeige-Pixel). Alternativ die CLI-Option `--extra`
+> mit exakten Koordinaten nutzen. Die Füllung `auto` gleicht die Farbe an den
 > Hintergrund an, sodass kleine Ungenauigkeiten auf farbigen Panels kaum
 > auffallen.
 
