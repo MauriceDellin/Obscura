@@ -56,6 +56,7 @@ class App(tk.Tk):
         self._orig_size = (0, 0)
         self.zoom = 1.0
         self.draw_fill = "auto"        # Standard-Fuellfarbe NEUER Felder
+        self.pan_var = tk.BooleanVar(value=False)  # Hand-/Verschiebemodus
         self.sel_index = None          # ausgewaehltes Feld im aktuellen Bild
         self._action = None            # ('new'|'move'|'resize', ...)
         self._press = (0, 0)           # Startpunkt (Originalkoord.) eines Drags
@@ -189,6 +190,8 @@ class App(tk.Tk):
         self.zoom_lbl.pack(side="left")
         ttk.Button(bar, text="+", width=3,
                    command=self._zoom_in).pack(side="left")
+        ttk.Checkbutton(bar, text="✋ Verschieben", variable=self.pan_var,
+                        command=self._toggle_pan).pack(side="left", padx=(12, 0))
 
         cwrap = ttk.Frame(pv); cwrap.pack(fill="both", expand=True, pady=(6, 0))
         self.canvas = tk.Canvas(cwrap, background="#222", highlightthickness=0,
@@ -206,6 +209,11 @@ class App(tk.Tk):
         self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<Motion>", self._on_hover)
+        # Bild verschieben (Pan): mittlere Maustaste (immer)
+        self.canvas.bind("<ButtonPress-2>",
+                         lambda e: self.canvas.scan_mark(e.x, e.y))
+        self.canvas.bind("<B2-Motion>",
+                         lambda e: self.canvas.scan_dragto(e.x, e.y, gain=1))
         self.canvas.bind("<Button-3>", self._on_rightclick)
         self.canvas.bind("<Delete>", lambda e: self._delete_selected())
         self.canvas.bind("<Configure>", self._on_canvas_resize)
@@ -221,9 +229,17 @@ class App(tk.Tk):
         base = getattr(sys, "_MEIPASS",
                        os.path.dirname(os.path.abspath(__file__)))
         ico = os.path.join(base, "app.ico")
+        if not os.path.exists(ico):
+            return
+        # 1) als Default-Icon fuer alle Fenster (Titelleiste)
         try:
-            if os.path.exists(ico):
-                self.iconbitmap(ico)
+            self.iconbitmap(default=ico)
+        except Exception:  # noqa: BLE001
+            pass
+        # 2) zusaetzlich per iconphoto (zuverlaessiger fuer die Taskleiste)
+        try:
+            self._icon_img = ImageTk.PhotoImage(Image.open(ico))
+            self.iconphoto(True, self._icon_img)
         except Exception:  # noqa: BLE001
             pass
 
@@ -551,6 +567,10 @@ class App(tk.Tk):
     # --------------------------------------------------------- Maus-Editor ---
     def _on_press(self, e):
         self.canvas.focus_set()
+        if self.pan_var.get():                 # Hand-Modus: Bild verschieben
+            self.canvas.scan_mark(int(e.x), int(e.y))
+            self._action = ("pan",)
+            return
         if self._picking:
             self._pick_color_at(e)
             return
@@ -591,6 +611,9 @@ class App(tk.Tk):
     def _on_drag(self, e):
         if not self._action:
             return
+        if self._action[0] == "pan":
+            self.canvas.scan_dragto(int(e.x), int(e.y), gain=1)
+            return
         ow, oh = self._orig_size
         ox, oy = self._oxy(e)
         ox = max(0, min(ox, ow)); oy = max(0, min(oy, oh))
@@ -629,6 +652,8 @@ class App(tk.Tk):
         self._action = None
         if not act:
             return
+        if act[0] == "pan":
+            return                          # Pan veraendert keine Felder
         if act[0] == "new":
             if self._rubber:
                 self.canvas.delete(self._rubber)
@@ -649,9 +674,17 @@ class App(tk.Tk):
             self._log(f"Feld hinzugefügt: ({int(xa)},{int(ya)},{int(xb)},{int(yb)})")
         self._update_preview()
 
+    def _toggle_pan(self):
+        try:
+            self.canvas.config(
+                cursor="fleur" if self.pan_var.get() else "crosshair")
+        except tk.TclError:
+            pass
+
     def _on_hover(self, e):
         """Cursor anpassen: Griff -> Resize, Feldinneres -> Move."""
-        if self._action or self._picking or not self.preview_base:
+        if self._action or self._picking or self.pan_var.get() \
+                or not self.preview_base:
             return
         ox, oy = self._oxy(e)
         fields = self._cur_fields()
@@ -821,6 +854,17 @@ def _enable_dpi_awareness():
         pass
 
 
+def _set_app_user_model_id():
+    """Eigene Taskleisten-Gruppe + eigenes Symbol statt des Tk-Standardsymbols."""
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "Dellin.RoentgenAnonymisierung")
+    except Exception:  # noqa: BLE001
+        pass
+
+
 if __name__ == "__main__":
     _enable_dpi_awareness()
+    _set_app_user_model_id()
     App().mainloop()

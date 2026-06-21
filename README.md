@@ -57,9 +57,11 @@ python anonymize_gui.py
    - „**Auto-Felder neu erkennen**" setzt die Header-Felder anhand der aktuellen
      Zeilenzahl/Füllung neu (manuelle Felder bleiben erhalten).
 6. **Zoom für präzises Zeichnen:** mit **Strg+Mausrad** (oder den Knöpfen
-   `+` / `−` / `Fit`) in die Vorschau hineinzoomen; bei Vergrößerung mit den
-   Scrollleisten bzw. Mausrad (horizontal: Umschalt+Mausrad) verschieben. So
-   lassen sich auch kleine Felder pixelgenau aufziehen.
+   `+` / `−` / `Fit`) in die Vorschau hineinzoomen. So lassen sich auch kleine
+   Felder pixelgenau bearbeiten.
+   - **Bild verschieben (Pan):** mit der **mittleren Maustaste** ziehen, oder den
+     Schalter **„✋ Verschieben"** aktivieren und mit links ziehen. Alternativ
+     Scrollleisten bzw. Mausrad (vertikal) / Umschalt+Mausrad (horizontal).
 7. Ausgabeordner wählen → **„Alle anonymisieren"**
 
 > Tipp: Für sehr präzise Felder vor dem Ziehen hineinzoomen (z. B. ×4 → unter
